@@ -1,3 +1,6 @@
+pub mod dns;
+pub mod http;
+
 use std::{
     fs,
     io::{BufRead, BufReader, Write},
