@@ -1,7 +1,8 @@
 use crate::dns::buffer::BytePacketBuffer;
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, Eq, Debug, Clone, Hash, Copy)]
+#[derive(PartialEq, Eq, Debug, Clone, Hash, Copy, Serialize, Deserialize)]
 pub enum QueryType {
     UNKNOWN(u16),
     A,     // 1
@@ -35,7 +36,7 @@ impl QueryType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DnsQuestion {
     pub name: String,
     pub qtype: QueryType,

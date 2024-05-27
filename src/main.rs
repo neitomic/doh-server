@@ -1,48 +1,69 @@
 pub mod dns;
 pub mod http;
 
-use std::{
-    fs,
-    io::{BufRead, BufReader, Write},
-    net::{TcpListener, TcpStream},
-    thread,
-    time::Duration,
+use axum::http::header;
+use axum::{
+    extract::Query,
+    http::{HeaderMap, StatusCode},
+    response::IntoResponse,
+    routing::get,
+    Router,
 };
+use dns::record::DnsPacket;
+use dns::{buffer::BytePacketBuffer, recursive_lookup};
+use http::DnsQueryParams;
 
-use https_server::ThreadPool;
+#[tokio::main]
+async fn main() {
+    let app = Router::new().route("/", get(handle_get));
 
-fn main() {
-    println!("Hello, world!");
-
-    let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
-    let pool = ThreadPool::new(4);
-
-    for stream in listener.incoming().take(2) {
-        let stream = stream.unwrap();
-
-        pool.execute(|| {
-            handle_connection(stream);
-        });
-    }
-
-    println!("Shutting down.");
+    // run it
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
+        .await
+        .unwrap();
+    println!("listening on {}", listener.local_addr().unwrap());
+    axum::serve(listener, app).await.unwrap();
 }
 
-fn handle_connection(mut stream: TcpStream) {
-    let buf_reader = BufReader::new(&mut stream);
-    let request_line = buf_reader.lines().next().unwrap().unwrap();
+async fn handle_get(headers: HeaderMap, Query(params): Query<DnsQueryParams>) -> impl IntoResponse {
+    let qname: String = params.as_qname().unwrap();
+    let mut result = recursive_lookup(&qname, dns::query::QueryType::A).unwrap();
+    handle_resp(headers, &mut result)
+}
 
-    let (status_line, filename) = match &request_line[..] {
-        "GET / HTTP/1.1" => ("HTTP/1.1 200 OK", "hello.html"),
-        "GET /sleep HTTP/1.1" => {
-            thread::sleep(Duration::from_secs(5));
-            ("HTTP/1.1 200 OK", "hello.html")
+fn handle_resp(headers: HeaderMap, result: &mut DnsPacket) -> impl IntoResponse {
+    if let Some(accept) = headers.get(header::ACCEPT) {
+        match accept.to_str().unwrap().to_lowercase().as_str() {
+            "application/dns-message" => {
+                let mut buffer: BytePacketBuffer = BytePacketBuffer::new();
+                result.write(&mut buffer).unwrap();
+                return (
+                    StatusCode::OK,
+                    [(header::CONTENT_TYPE, "application/dns-message")],
+                    buffer.buf.to_vec(),
+                );
+            }
+            "application/dns-json" => {
+                let json_result = result.as_json();
+                return (
+                    StatusCode::OK,
+                    [(header::CONTENT_TYPE, "application/dns-message")],
+                    serde_json::to_vec(&json_result).unwrap(),
+                );
+            }
+            _ => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    [(header::CONTENT_TYPE, "application/dns-message")],
+                    Vec::new(),
+                )
+            }
         }
-        _ => ("HTTP/1.1 404 NOT FOUND", "404.html"),
-    };
-
-    let contents: String = fs::read_to_string(filename).unwrap();
-    let length = contents.len();
-    let response = format!("{status_line}\r\nContent-Length: {length}\r\n\r\n{contents}");
-    stream.write_all(response.as_bytes()).unwrap();
+    } else {
+        return (
+            StatusCode::BAD_REQUEST,
+            [(header::CONTENT_TYPE, "application/dns-message")],
+            Vec::new(),
+        );
+    }
 }

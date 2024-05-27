@@ -1,10 +1,12 @@
-use std::net::{Ipv4Addr, Ipv6Addr};
 use crate::dns::buffer::BytePacketBuffer;
 use crate::dns::header::DnsHeader;
 use crate::dns::query::{DnsQuestion, QueryType};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use serde_json::{self, json};
+use std::net::{Ipv4Addr, Ipv6Addr};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DnsRecord {
     UNKNOWN {
         domain: String,
@@ -60,11 +62,7 @@ impl DnsRecord {
                     ((raw_addr >> 8) & 0xFF) as u8,
                     ((raw_addr >> 0) & 0xFF) as u8,
                 );
-                Ok(DnsRecord::A {
-                    domain,
-                    addr,
-                    ttl,
-                })
+                Ok(DnsRecord::A { domain, addr, ttl })
             }
             QueryType::AAAA => {
                 let raw_addr1 = buffer.read_u32()?;
@@ -81,11 +79,7 @@ impl DnsRecord {
                     ((raw_addr4 >> 16) & 0xFFFF) as u16,
                     ((raw_addr4 >> 0) & 0xFFFF) as u16,
                 );
-                Ok(DnsRecord::AAAA {
-                    domain,
-                    addr,
-                    ttl,
-                })
+                Ok(DnsRecord::AAAA { domain, addr, ttl })
             }
             QueryType::NS => {
                 let mut ns = String::new();
@@ -139,7 +133,7 @@ impl DnsRecord {
             DnsRecord::A {
                 ref domain,
                 ref addr,
-                ttl
+                ttl,
             } => {
                 buffer.write_qname(domain)?;
                 buffer.write_u16(QueryType::A.to_num())?;
@@ -156,7 +150,7 @@ impl DnsRecord {
             DnsRecord::AAAA {
                 ref domain,
                 ref addr,
-                ttl
+                ttl,
             } => {
                 buffer.write_qname(domain)?;
                 buffer.write_u16(QueryType::AAAA.to_num())?;
@@ -169,7 +163,9 @@ impl DnsRecord {
                 }
             }
             DnsRecord::NS {
-                ref domain, ref host, ttl
+                ref domain,
+                ref host,
+                ttl,
             } => {
                 buffer.write_qname(domain)?;
                 buffer.write_u16(QueryType::NS.to_num())?;
@@ -185,7 +181,9 @@ impl DnsRecord {
                 buffer.set_u16(pos, size as u16)?;
             }
             DnsRecord::CNAME {
-                ref domain, ref host, ttl
+                ref domain,
+                ref host,
+                ttl,
             } => {
                 buffer.write_qname(domain)?;
                 buffer.write_u16(QueryType::CNAME.to_num())?;
@@ -201,7 +199,10 @@ impl DnsRecord {
                 buffer.set_u16(pos, size as u16)?;
             }
             DnsRecord::MX {
-                ref domain, priority, ref host, ttl
+                ref domain,
+                priority,
+                ref host,
+                ttl,
             } => {
                 buffer.write_qname(domain)?;
                 buffer.write_u16(QueryType::MX.to_num())?;
@@ -266,7 +267,6 @@ impl DnsPacket {
             result.authorities.push(authority);
         }
 
-
         for _ in 0..result.header.resource_entries {
             let resource = DnsRecord::read(buffer)?;
             result.resources.push(resource);
@@ -306,25 +306,57 @@ impl DnsPacket {
         })
     }
 
-    fn get_ns<'a>(&'a self, qname: &'a str) -> impl Iterator<Item=(&'a str, &'a str)> {
-        self.authorities.iter().filter_map(|record| match record {
-            DnsRecord::NS { domain, host, .. } => Some((domain.as_str(), host.as_str())),
-            _ => None,
-        }).filter(move |(domain, _)| qname.ends_with(*domain))
+    fn get_ns<'a>(&'a self, qname: &'a str) -> impl Iterator<Item = (&'a str, &'a str)> {
+        self.authorities
+            .iter()
+            .filter_map(|record| match record {
+                DnsRecord::NS { domain, host, .. } => Some((domain.as_str(), host.as_str())),
+                _ => None,
+            })
+            .filter(move |(domain, _)| qname.ends_with(*domain))
     }
 
     pub fn get_resolved_ns(&self, qname: &str) -> Option<Ipv4Addr> {
         self.get_ns(qname)
             .flat_map(|(_, host)| {
-                self.resources.iter().filter_map(move |record| match record {
-                    DnsRecord::A { domain, addr, .. } if domain == host => Some(addr),
-                    _ => None,
-                })
-            }).map(|addr| *addr)
+                self.resources
+                    .iter()
+                    .filter_map(move |record| match record {
+                        DnsRecord::A { domain, addr, .. } if domain == host => Some(addr),
+                        _ => None,
+                    })
+            })
+            .map(|addr| *addr)
             .next()
     }
 
     pub fn get_unresolved_ns<'a>(&'a self, qname: &'a str) -> Option<&'a str> {
         self.get_ns(qname).map(|(_, host)| host).next()
+    }
+
+    pub fn as_json(&self) -> serde_json::Value {
+        json!({
+            "Status": self.header.opcode,
+            "TC": self.header.truncated_message,
+            "RD": self.header.recursion_desired,
+            "RA": self.header.recursion_available,
+            "AD": self.header.authed_data,
+            "CD": self.header.checking_disabled,
+            "Question": self.questions,
+            "Answer": self.answers,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dns_packet_as_json() {
+        let packet = DnsPacket::new();
+        let j_value = packet.as_json();
+        // let string = jValue.as_str().unwrap();
+        println!("{}", serde_json::to_string_pretty(&j_value).unwrap());
     }
 }
