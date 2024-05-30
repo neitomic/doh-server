@@ -34,6 +34,17 @@ impl QueryType {
             _ => QueryType::UNKNOWN(num),
         }
     }
+
+    pub fn from_str(name: String) -> QueryType {
+        match name.to_uppercase().as_str() {
+            "A" => QueryType::A,
+            "NS" => QueryType::NS,
+            "CNAME" => QueryType::CNAME,
+            "MX" => QueryType::MX,
+            "AAAA" => QueryType::AAAA,
+            _ => QueryType::UNKNOWN(0),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

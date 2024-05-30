@@ -2,7 +2,9 @@ pub mod dns;
 pub mod http;
 
 use axum::http::header;
+use axum::routing::post;
 use axum::{
+    body::Bytes,
     extract::Query,
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
@@ -15,7 +17,9 @@ use http::DnsQueryParams;
 
 #[tokio::main]
 async fn main() {
-    let app = Router::new().route("/", get(handle_get));
+    let app = Router::new()
+        .route("/dns-query", get(handle_get))
+        .route("/dns-query", post(handle_post));
 
     // run it
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
@@ -26,9 +30,32 @@ async fn main() {
 }
 
 async fn handle_get(headers: HeaderMap, Query(params): Query<DnsQueryParams>) -> impl IntoResponse {
-    let qname: String = params.as_qname().unwrap();
-    let mut result = recursive_lookup(&qname, dns::query::QueryType::A).unwrap();
+    let question = params.to_dns_question().unwrap();
+    let mut result = recursive_lookup(&question.name, question.qtype).unwrap();
     handle_resp(headers, &mut result)
+}
+
+async fn handle_post(headers: HeaderMap, body: Bytes) -> impl IntoResponse {
+    let mut buf: [u8; 512] = [0; 512];
+    let bytes = body.as_ref();
+    buf[..bytes.len()].copy_from_slice(bytes);
+
+    let mut req_buffer = BytePacketBuffer { buf: buf, pos: 0 };
+    let packet = DnsPacket::from_buffer(&mut req_buffer).unwrap();
+    if let Some(q) = packet.questions.first() {
+        let mut result = recursive_lookup(&q.name, q.qtype).unwrap();
+        return handle_resp(headers, &mut result).into_response();
+    } else {
+        return bad_request().into_response();
+    }
+}
+
+fn bad_request() -> impl IntoResponse {
+    (
+        StatusCode::BAD_REQUEST,
+        [(header::CONTENT_TYPE, "application/dns-message")],
+        Vec::new(),
+    )
 }
 
 fn handle_resp(headers: HeaderMap, result: &mut DnsPacket) -> impl IntoResponse {

@@ -47,7 +47,7 @@ pub fn recursive_lookup(qname: &str, qtype: QueryType) -> Result<DnsPacket> {
 
         let ns_copy = ns;
         let server = (ns_copy, 53);
-        let response = lookup(qname, qtype, server)?;
+        let response: DnsPacket = lookup(qname, qtype, server)?;
 
         if !response.answers.is_empty() && response.header.rescode == ResultCode::NOERROR {
             return Ok(response);
