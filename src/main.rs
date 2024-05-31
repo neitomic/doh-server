@@ -1,48 +1,45 @@
 pub mod dns;
 pub mod http;
 
-use std::{
-    fs,
-    io::{BufRead, BufReader, Write},
-    net::{TcpListener, TcpStream},
-    thread,
-    time::Duration,
+use axum::routing::post;
+use axum::{
+    body::Bytes, extract::Query, http::HeaderMap, response::IntoResponse, routing::get, Router,
 };
+use dns::record::DnsPacket;
+use dns::{buffer::BytePacketBuffer, recursive_lookup};
+use http::{DnsQueryParams, DnsResponse};
 
-use https_server::ThreadPool;
+#[tokio::main]
+async fn main() {
+    let app = Router::new()
+        .route("/dns-query", get(handle_get))
+        .route("/dns-query", post(handle_post));
 
-fn main() {
-    println!("Hello, world!");
-
-    let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
-    let pool = ThreadPool::new(4);
-
-    for stream in listener.incoming().take(2) {
-        let stream = stream.unwrap();
-
-        pool.execute(|| {
-            handle_connection(stream);
-        });
-    }
-
-    println!("Shutting down.");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
+        .await
+        .unwrap();
+    println!("listening on {}", listener.local_addr().unwrap());
+    axum::serve(listener, app).await.unwrap();
 }
 
-fn handle_connection(mut stream: TcpStream) {
-    let buf_reader = BufReader::new(&mut stream);
-    let request_line = buf_reader.lines().next().unwrap().unwrap();
+async fn handle_get(headers: HeaderMap, Query(params): Query<DnsQueryParams>) -> impl IntoResponse {
+    let question = params.to_dns_question().unwrap();
+    let mut result = recursive_lookup(&question.name, question.qtype).unwrap();
+    DnsResponse::from_packet(headers, &mut result).unwrap()
+}
 
-    let (status_line, filename) = match &request_line[..] {
-        "GET / HTTP/1.1" => ("HTTP/1.1 200 OK", "hello.html"),
-        "GET /sleep HTTP/1.1" => {
-            thread::sleep(Duration::from_secs(5));
-            ("HTTP/1.1 200 OK", "hello.html")
-        }
-        _ => ("HTTP/1.1 404 NOT FOUND", "404.html"),
-    };
+async fn handle_post(headers: HeaderMap, body: Bytes) -> impl IntoResponse {
+    let mut buf: [u8; 512] = [0; 512];
+    let bytes = body.as_ref();
+    buf[..bytes.len()].copy_from_slice(bytes);
 
-    let contents: String = fs::read_to_string(filename).unwrap();
-    let length = contents.len();
-    let response = format!("{status_line}\r\nContent-Length: {length}\r\n\r\n{contents}");
-    stream.write_all(response.as_bytes()).unwrap();
+    let mut req_buffer: BytePacketBuffer = BytePacketBuffer { buf: buf, pos: 0 };
+    let packet = DnsPacket::from_buffer(&mut req_buffer).unwrap();
+    // todo: handle multiple questions
+    if let Some(q) = packet.questions.first() {
+        let mut result = recursive_lookup(&q.name, q.qtype).unwrap();
+        DnsResponse::from_packet(headers, &mut result).unwrap()
+    } else {
+        DnsResponse::BadRequest()
+    }
 }

@@ -41,13 +41,13 @@ pub fn lookup(qname: &str, qtype: QueryType, server: (Ipv4Addr, u16)) -> Result<
 }
 
 pub fn recursive_lookup(qname: &str, qtype: QueryType) -> Result<DnsPacket> {
-    let mut ns = "198.41.0.4".parse::<Ipv4Addr>().unwrap();
+    let mut ns: Ipv4Addr = "198.41.0.4".parse::<Ipv4Addr>().unwrap();
     loop {
         println!("attempting lookup of {:?} {} with ns {}", qtype, qname, ns);
 
         let ns_copy = ns;
         let server = (ns_copy, 53);
-        let response = lookup(qname, qtype, server)?;
+        let response: DnsPacket = lookup(qname, qtype, server)?;
 
         if !response.answers.is_empty() && response.header.rescode == ResultCode::NOERROR {
             return Ok(response);
