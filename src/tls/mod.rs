@@ -86,12 +86,8 @@ pub fn generate_ca(country: &str, organization: &str) -> anyhow::Result<Cert> {
         .distinguished_name
         .push(DnType::OrganizationName, organization);
 
-    let rng = SystemRandom::new();
-    let alg = &rcgen::PKCS_RSA_SHA256;
-    let pkcs8_bytes =
-        Ed25519KeyPair::generate_pkcs8(&rng).or(Err(rcgen::Error::RingUnspecified))?;
-    let key_pair: KeyPair =
-        KeyPair::from_pkcs8_der_and_sign_algo(&pkcs8_bytes.as_ref().into(), alg)?;
+    let alg: &rcgen::SignatureAlgorithm = &rcgen::PKCS_ECDSA_P256_SHA256;
+    let key_pair = KeyPair::generate_for(alg)?;
 
     let cert: Certificate = params.self_signed(&key_pair)?;
     let cert_pem = cert.pem();
@@ -107,12 +103,8 @@ pub fn generate_cert(ca: &Cert, cn: &str, sans: Vec<SanType>) -> anyhow::Result<
     params.distinguished_name.push(DnType::CommonName, cn);
     params.subject_alt_names.extend(sans); // todo: handle empty sans
 
-    let rng = SystemRandom::new();
-    let alg = &rcgen::PKCS_RSA_SHA256;
-    let pkcs8_bytes =
-        Ed25519KeyPair::generate_pkcs8(&rng).or(Err(rcgen::Error::RingUnspecified))?;
-    let key_pair: KeyPair =
-        KeyPair::from_pkcs8_der_and_sign_algo(&pkcs8_bytes.as_ref().into(), alg)?;
+    let alg: &rcgen::SignatureAlgorithm = &rcgen::PKCS_ECDSA_P256_SHA256;
+    let key_pair = KeyPair::generate_for(alg)?;
     let ca_cert = ca.self_signed_cert()?;
     let cert = params.signed_by(&key_pair, &ca_cert, &ca.key_pair)?;
     let cert_pem = cert.pem();

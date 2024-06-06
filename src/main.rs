@@ -3,7 +3,7 @@ pub mod http;
 pub mod tls;
 
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use axum::routing::post;
 use axum::{
