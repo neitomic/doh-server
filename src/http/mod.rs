@@ -66,7 +66,10 @@ impl DnsResponse {
             "application/dns-message" => {
                 let mut buffer: BytePacketBuffer = BytePacketBuffer::new();
                 result.write(&mut buffer).unwrap();
-                Ok(DnsResponse::DnsMessage(buffer.buf.to_vec()))
+
+                let len = buffer.pos();
+                let data = buffer.get_range(0, len)?;
+                Ok(DnsResponse::DnsMessage(data.to_vec()))
             }
             "application/dns-json" => {
                 let json_result = result.as_json();
