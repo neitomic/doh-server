@@ -7,7 +7,6 @@ use rcgen::{
     BasicConstraints, Certificate, CertificateParams, DistinguishedName, DnType, IsCa, KeyPair,
     KeyUsagePurpose, SanType,
 };
-use ring::{rand::SystemRandom, signature::Ed25519KeyPair};
 
 pub struct Cert {
     cert_pem: String,
