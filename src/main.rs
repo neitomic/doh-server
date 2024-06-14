@@ -2,7 +2,7 @@ pub mod dns;
 pub mod http;
 pub mod tls;
 
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use axum::routing::post;
@@ -15,7 +15,6 @@ use config::Config;
 use dns::record::DnsPacket;
 use dns::{buffer::BytePacketBuffer, recursive_lookup};
 use http::{DnsQueryParams, DnsResponse};
-use rcgen::SanType;
 use serde_derive::Deserialize;
 
 #[derive(Parser, Debug)]
@@ -32,8 +31,12 @@ struct Server {
 
 #[derive(Debug, Deserialize)]
 struct Tls {
+    enabled: bool,
     cert_dir: String,
-    cert_name: String,
+    country: String,
+    organization: String,
+    common_name: String,
+    sans: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -60,42 +63,28 @@ async fn main() {
     let conf_file = args.config.unwrap_or("conf/default.toml".to_string());
     let settings = Settings::new(conf_file).unwrap();
 
-    let dir = PathBuf::from(settings.tls.cert_dir);
-    let cert_name = settings.tls.cert_name;
-    let cert: tls::Cert;
-
-    if let Some(existing_cert) = tls::Cert::load_if_exists(dir.as_path(), &cert_name).unwrap() {
-        cert = existing_cert;
-    } else {
-        let ca = tls::generate_ca("vn", "neitomic").unwrap();
-        cert = tls::generate_cert(
-            &ca,
-            "dns.local",
-            vec![
-                SanType::IpAddress("127.0.0.1".parse().unwrap()),
-                SanType::DnsName("dns.local".try_into().unwrap()),
-            ],
-        )
-        .unwrap();
-        ca.write(dir.as_path(), "ca").unwrap();
-        cert.write(dir.as_path(), &cert_name).unwrap();
-    }
-
-    let config = RustlsConfig::from_pem(cert.cert_pem().into_bytes(), cert.key_pem().into_bytes())
-        .await
-        .unwrap();
-
     let app = Router::new()
         .route("/dns-query", get(handle_get))
         .route("/dns-query", post(handle_post));
 
-    // run https server
     let addr = SocketAddr::new(settings.server.host.parse().unwrap(), settings.server.port);
-    tracing::debug!("listening on {}", addr);
-    axum_server::bind_rustls(addr, config)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+
+    if settings.tls.enabled {
+        let cert = gen_cert(settings.tls).unwrap();
+        let config: RustlsConfig =
+            RustlsConfig::from_pem(cert.cert_pem().into_bytes(), cert.key_pem().into_bytes())
+                .await
+                .unwrap();
+        println!("serving HTTPS server on {}", addr);
+        axum_server::bind_rustls(addr, config)
+            .serve(app.into_make_service())
+            .await
+            .unwrap();
+    } else {
+        let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+        println!("serving HTTP server on {}", listener.local_addr().unwrap());
+        axum::serve(listener, app).await.unwrap();
+    }
 }
 
 async fn handle_get(headers: HeaderMap, Query(params): Query<DnsQueryParams>) -> impl IntoResponse {
@@ -117,5 +106,22 @@ async fn handle_post(headers: HeaderMap, body: Bytes) -> impl IntoResponse {
         DnsResponse::from_packet(headers, &mut result).unwrap()
     } else {
         DnsResponse::BadRequest()
+    }
+}
+
+fn gen_cert(settings: Tls) -> anyhow::Result<tls::Cert> {
+    let dir = PathBuf::from(settings.cert_dir);
+    let cert_name = settings.common_name;
+
+    if let Some(existing_cert) = tls::Cert::load_if_exists(dir.as_path(), &cert_name)? {
+        println!("using existing certificate");
+        Ok(existing_cert)
+    } else {
+        println!("generating new CA and certificate");
+        let ca = tls::generate_ca(&settings.country, &settings.organization)?;
+        let cert = tls::generate_cert(&ca, &cert_name, settings.sans)?;
+        ca.write(dir.as_path(), "ca").unwrap();
+        cert.write(dir.as_path(), &cert_name).unwrap();
+        Ok(cert)
     }
 }

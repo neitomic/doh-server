@@ -5,7 +5,7 @@ use std::{
 
 use rcgen::{
     BasicConstraints, Certificate, CertificateParams, DistinguishedName, DnType, IsCa, KeyPair,
-    KeyUsagePurpose, SanType,
+    KeyUsagePurpose,
 };
 
 pub struct Cert {
@@ -93,14 +93,14 @@ pub fn generate_ca(country: &str, organization: &str) -> anyhow::Result<Cert> {
     Ok(Cert { cert_pem, key_pair })
 }
 
-pub fn generate_cert(ca: &Cert, cn: &str, sans: Vec<SanType>) -> anyhow::Result<Cert> {
-    let mut params = CertificateParams::default();
+pub fn generate_cert(ca: &Cert, cn: &str, sans: Vec<String>) -> anyhow::Result<Cert> {
+    let mut params = CertificateParams::new(sans)?;
+
     params.distinguished_name = DistinguishedName::new();
     params.is_ca = IsCa::NoCa;
     params.use_authority_key_identifier_extension = true;
     params.key_usages.push(KeyUsagePurpose::DigitalSignature);
     params.distinguished_name.push(DnType::CommonName, cn);
-    params.subject_alt_names.extend(sans); // todo: handle empty sans
 
     let alg: &rcgen::SignatureAlgorithm = &rcgen::PKCS_ECDSA_P256_SHA256;
     let key_pair = KeyPair::generate_for(alg)?;
@@ -134,12 +134,7 @@ mod tests {
     #[test]
     fn test_gen_and_load_cert() {
         let ca = generate_ca("VN", "Example").unwrap();
-        let cert = generate_cert(
-            &ca,
-            "example.com",
-            vec![SanType::DnsName("localhost".try_into().unwrap())],
-        )
-        .unwrap();
+        let cert = generate_cert(&ca, "example.com", vec!["localhost".to_string()]).unwrap();
 
         let dir = tempfile::tempdir().unwrap();
         let path = dir.into_path();
