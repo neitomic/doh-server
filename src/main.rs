@@ -4,6 +4,7 @@ pub mod tls;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use axum::routing::post;
 use axum::{
@@ -16,6 +17,12 @@ use dns::record::DnsPacket;
 use dns::{buffer::BytePacketBuffer, recursive_lookup};
 use http::{DnsQueryParams, DnsResponse};
 use serde_derive::Deserialize;
+use tokio::signal;
+use tower_http::timeout::TimeoutLayer;
+use tower_http::trace::TraceLayer;
+use tracing::info;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -59,13 +66,25 @@ impl Settings {
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "doh_server=debug,tower_http=debug,axum=trace".into()),
+        )
+        .with(tracing_subscriber::fmt::layer().pretty())
+        .init();
+
     let args = Args::parse();
     let conf_file = args.config.unwrap_or("conf/default.toml".to_string());
-    let settings = Settings::new(conf_file).unwrap();
+    let settings: Settings = Settings::new(conf_file).unwrap();
 
     let app = Router::new()
         .route("/dns-query", get(handle_get))
-        .route("/dns-query", post(handle_post));
+        .route("/dns-query", post(handle_post))
+        .layer((
+            TraceLayer::new_for_http(),
+            TimeoutLayer::new(Duration::from_secs(10)),
+        ));
 
     let addr = SocketAddr::new(settings.server.host.parse().unwrap(), settings.server.port);
 
@@ -75,15 +94,30 @@ async fn main() {
             RustlsConfig::from_pem(cert.cert_pem().into_bytes(), cert.key_pem().into_bytes())
                 .await
                 .unwrap();
-        println!("serving HTTPS server on {}", addr);
-        axum_server::bind_rustls(addr, config)
-            .serve(app.into_make_service())
-            .await
-            .unwrap();
+        info!("serving HTTPS server on {}", addr);
+
+        let handle = axum_server::Handle::new();
+        let shutdown_signal_fut = shutdown_signal();
+
+        let server_fut = axum_server::bind_rustls(addr, config)
+            .handle(handle.clone())
+            .serve(app.into_make_service());
+
+        tokio::select! {
+            () = shutdown_signal_fut =>
+                handle.graceful_shutdown(Some(Duration::from_secs(30))),
+            res = server_fut => res.unwrap(),
+        }
+        info!("HTTPS Server is stopping");
     } else {
         let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-        println!("serving HTTP server on {}", listener.local_addr().unwrap());
-        axum::serve(listener, app).await.unwrap();
+        info!("serving HTTP server on {}", listener.local_addr().unwrap());
+        axum::serve(listener, app)
+            .with_graceful_shutdown(shutdown_signal())
+            .await
+            .unwrap();
+
+        info!("HTTP Server is stopping");
     }
 }
 
@@ -114,14 +148,38 @@ fn gen_cert(settings: Tls) -> anyhow::Result<tls::Cert> {
     let cert_name = settings.common_name;
 
     if let Some(existing_cert) = tls::Cert::load_if_exists(dir.as_path(), &cert_name)? {
-        println!("using existing certificate");
+        info!("using existing certificate");
         Ok(existing_cert)
     } else {
-        println!("generating new CA and certificate");
+        info!("generating new CA and certificate");
         let ca = tls::generate_ca(&settings.country, &settings.organization)?;
         let cert = tls::generate_cert(&ca, &cert_name, settings.sans)?;
         ca.write(dir.as_path(), "ca").unwrap();
         cert.write(dir.as_path(), &cert_name).unwrap();
         Ok(cert)
+    }
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
     }
 }
