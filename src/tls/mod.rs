@@ -134,12 +134,7 @@ mod tests {
     #[test]
     fn test_gen_and_load_cert() {
         let ca = generate_ca("VN", "Example").unwrap();
-        let cert = generate_cert(
-            &ca,
-            "example.com",
-            vec![SanType::DnsName("localhost".try_into().unwrap())],
-        )
-        .unwrap();
+        let cert = generate_cert(&ca, "example.com", vec!["localhost".to_string()]).unwrap();
 
         let dir = tempfile::tempdir().unwrap();
         let path = dir.into_path();
