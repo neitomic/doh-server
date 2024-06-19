@@ -8,6 +8,7 @@ use self::{
     record::DnsPacket,
 };
 use anyhow::Result;
+use tracing::debug;
 
 pub mod buffer;
 pub mod header;
@@ -16,9 +17,8 @@ pub mod record;
 pub mod result;
 
 pub fn lookup(qname: &str, qtype: QueryType, server: (Ipv4Addr, u16)) -> Result<DnsPacket> {
-    // let server = ("8.8.8.8", 53);
-
-    let socket: UdpSocket = UdpSocket::bind(("0.0.0.0", 43210)).unwrap();
+    // todo: maybe cache this socket?
+    let socket: UdpSocket = UdpSocket::bind(("0.0.0.0", 0))?;
     let mut packet: DnsPacket = DnsPacket::new();
     packet.header.id = 6666;
     packet.header.questions = 1;
@@ -30,20 +30,18 @@ pub fn lookup(qname: &str, qtype: QueryType, server: (Ipv4Addr, u16)) -> Result<
     let mut req_buffer = BytePacketBuffer::new();
     packet.write(&mut req_buffer)?;
 
-    socket
-        .send_to(&req_buffer.buf[0..req_buffer.pos], server)
-        .unwrap();
+    socket.send_to(&req_buffer.buf[0..req_buffer.pos], server)?;
 
     let mut res_buffer = BytePacketBuffer::new();
-    socket.recv_from(&mut res_buffer.buf).unwrap();
+    socket.recv_from(&mut res_buffer.buf)?;
 
     DnsPacket::from_buffer(&mut res_buffer)
 }
 
 pub fn recursive_lookup(qname: &str, qtype: QueryType) -> Result<DnsPacket> {
-    let mut ns: Ipv4Addr = "198.41.0.4".parse::<Ipv4Addr>().unwrap();
+    let mut ns: Ipv4Addr = "198.41.0.4".parse::<Ipv4Addr>()?;
     loop {
-        println!("attempting lookup of {:?} {} with ns {}", qtype, qname, ns);
+        debug!("attempting lookup of {:?} {} with ns {}", qtype, qname, ns);
 
         let ns_copy = ns;
         let server = (ns_copy, 53);

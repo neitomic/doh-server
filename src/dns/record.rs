@@ -5,6 +5,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{self, json};
 use std::net::{Ipv4Addr, Ipv6Addr};
+use tracing::warn;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DnsRecord {
@@ -219,7 +220,7 @@ impl DnsRecord {
                 buffer.set_u16(pos, size as u16)?;
             }
             DnsRecord::UNKNOWN { .. } => {
-                println!("Skipping record: {:?}", self);
+                warn!("Skipping record: {:?}", self);
             }
         }
 
