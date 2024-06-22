@@ -16,9 +16,12 @@ pub mod query;
 pub mod record;
 pub mod result;
 
-pub fn lookup(qname: &str, qtype: QueryType, server: (Ipv4Addr, u16)) -> Result<DnsPacket> {
-    // todo: maybe cache this socket?
-    let socket: UdpSocket = UdpSocket::bind(("0.0.0.0", 0))?;
+pub fn lookup(
+    socket: &UdpSocket,
+    qname: &str,
+    qtype: QueryType,
+    server: (Ipv4Addr, u16),
+) -> Result<DnsPacket> {
     let mut packet: DnsPacket = DnsPacket::new();
     packet.header.id = 6666;
     packet.header.questions = 1;
@@ -34,18 +37,17 @@ pub fn lookup(qname: &str, qtype: QueryType, server: (Ipv4Addr, u16)) -> Result<
 
     let mut res_buffer = BytePacketBuffer::new();
     socket.recv_from(&mut res_buffer.buf)?;
-    drop(socket);
     DnsPacket::from_buffer(&mut res_buffer)
 }
 
-pub fn recursive_lookup(qname: &str, qtype: QueryType) -> Result<DnsPacket> {
+pub fn recursive_lookup(socket: &UdpSocket, qname: &str, qtype: QueryType) -> Result<DnsPacket> {
     let mut ns: Ipv4Addr = "198.41.0.4".parse::<Ipv4Addr>()?;
     loop {
         debug!("attempting lookup of {:?} {} with ns {}", qtype, qname, ns);
 
         let ns_copy = ns;
         let server = (ns_copy, 53);
-        let response: DnsPacket = lookup(qname, qtype, server)?;
+        let response: DnsPacket = lookup(socket, qname, qtype, server)?;
 
         if !response.answers.is_empty() && response.header.rescode == ResultCode::NOERROR {
             return Ok(response);
@@ -65,7 +67,7 @@ pub fn recursive_lookup(qname: &str, qtype: QueryType) -> Result<DnsPacket> {
             None => return Ok(response),
         };
 
-        let recursive_response = recursive_lookup(&new_ns_name, QueryType::A)?;
+        let recursive_response = recursive_lookup(socket, &new_ns_name, QueryType::A)?;
         if let Some(new_ns) = recursive_response.get_random_a() {
             ns = new_ns;
         } else {

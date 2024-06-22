@@ -2,10 +2,11 @@ pub mod dns;
 pub mod http;
 pub mod tls;
 
-use std::net::SocketAddr;
+use std::net::{SocketAddr, UdpSocket};
 use std::path::PathBuf;
 use std::time::Duration;
 
+use axum::extract::State;
 use axum::routing::post;
 use axum::{
     body::Bytes, extract::Query, http::HeaderMap, response::IntoResponse, routing::get, Router,
@@ -17,7 +18,9 @@ use dns::record::DnsPacket;
 use dns::{buffer::BytePacketBuffer, recursive_lookup};
 use http::{DnsQueryParams, DnsResponse};
 use serde_derive::Deserialize;
+use std::sync::Arc;
 use tokio::signal;
+use tokio_utils::Pool;
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info;
@@ -78,9 +81,14 @@ async fn main() {
     let conf_file = args.config.unwrap_or("conf/default.toml".to_string());
     let settings: Settings = Settings::new(conf_file).unwrap();
 
+    let pool: Pool<Arc<UdpSocket>> = (0..10)
+        .map(|_| Arc::new(UdpSocket::bind("0.0.0.0:0").unwrap()))
+        .into();
+
     let app = Router::new()
         .route("/dns-query", get(handle_get))
         .route("/dns-query", post(handle_post))
+        .with_state(pool)
         .layer((
             TraceLayer::new_for_http(),
             TimeoutLayer::new(Duration::from_secs(10)),
@@ -121,13 +129,22 @@ async fn main() {
     }
 }
 
-async fn handle_get(headers: HeaderMap, Query(params): Query<DnsQueryParams>) -> impl IntoResponse {
+async fn handle_get(
+    State(pool): State<Pool<Arc<UdpSocket>>>,
+    headers: HeaderMap,
+    Query(params): Query<DnsQueryParams>,
+) -> impl IntoResponse {
     let question = params.to_dns_question().unwrap();
-    let mut result = recursive_lookup(&question.name, question.qtype).unwrap();
+    let socket = pool.acquire().await;
+    let mut result = recursive_lookup(socket.as_ref(), &question.name, question.qtype).unwrap();
     DnsResponse::from_packet(headers, &mut result).unwrap()
 }
 
-async fn handle_post(headers: HeaderMap, body: Bytes) -> impl IntoResponse {
+async fn handle_post(
+    State(pool): State<Pool<Arc<UdpSocket>>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> impl IntoResponse {
     let mut buf: [u8; 512] = [0; 512];
     let bytes = body.as_ref();
     buf[..bytes.len()].copy_from_slice(bytes);
@@ -136,7 +153,8 @@ async fn handle_post(headers: HeaderMap, body: Bytes) -> impl IntoResponse {
     let packet = DnsPacket::from_buffer(&mut req_buffer).unwrap();
     // todo: handle multiple questions
     if let Some(q) = packet.questions.first() {
-        let mut result = recursive_lookup(&q.name, q.qtype).unwrap();
+        let socket = pool.acquire().await;
+        let mut result = recursive_lookup(socket.as_ref(), &q.name, q.qtype).unwrap();
         DnsResponse::from_packet(headers, &mut result).unwrap()
     } else {
         DnsResponse::BadRequest()
