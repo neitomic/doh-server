@@ -6,7 +6,7 @@ COPY ./src ./src
 RUN cargo build --release
 
 FROM debian
-WORKDIR doh-server
+WORKDIR /doh-server
 COPY --from=build /doh-server/target/release/doh-server ./doh-server
 COPY ./conf/default.toml ./conf/default.toml
 CMD ["/doh-server/doh-server"]
