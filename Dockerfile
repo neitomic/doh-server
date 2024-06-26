@@ -1,7 +1,7 @@
 FROM rust:1.79 as build
 WORKDIR /doh-server
 
-COPY Cargo.toml Cargo.lock .
+COPY Cargo.toml Cargo.lock ./
 COPY ./src ./src
 RUN cargo build --release
 

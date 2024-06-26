@@ -51,7 +51,7 @@ impl BytePacketBuffer {
         if start + len >= 512 {
             return Err(anyhow!("End of buffer"));
         }
-        Ok(&self.buf[start..start + len as usize])
+        Ok(&self.buf[start..start + len])
     }
 
     pub fn read_u16(&mut self) -> Result<u16> {

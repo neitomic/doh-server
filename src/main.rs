@@ -19,13 +19,16 @@ use dns::{buffer::BytePacketBuffer, recursive_lookup};
 use http::{DnsQueryParams, DnsResponse};
 use serde_derive::Deserialize;
 use std::sync::Arc;
+use axum::body::Body;
+use axum::http::Request;
 use tokio::signal;
 use tokio_utils::Pool;
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
-use tracing::info;
+use tracing::{info, Level};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use uuid::Uuid;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -90,7 +93,17 @@ async fn main() {
         .route("/dns-query", post(handle_post))
         .with_state(pool)
         .layer((
-            TraceLayer::new_for_http(),
+            TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {
+                let request_id = Uuid::new_v4();
+                tracing::span!(
+                    Level::DEBUG,
+                    "request",
+                    method = display(request.method()),
+                    uri = display(request.uri()),
+                    version = debug(request.version()),
+                    request_id = display(request_id),
+                )
+            }),
             TimeoutLayer::new(Duration::from_secs(10)),
         ));
 
@@ -149,7 +162,7 @@ async fn handle_post(
     let bytes = body.as_ref();
     buf[..bytes.len()].copy_from_slice(bytes);
 
-    let mut req_buffer: BytePacketBuffer = BytePacketBuffer { buf: buf, pos: 0 };
+    let mut req_buffer: BytePacketBuffer = BytePacketBuffer { buf, pos: 0 };
     let packet = DnsPacket::from_buffer(&mut req_buffer).unwrap();
     // todo: handle multiple questions
     if let Some(q) = packet.questions.first() {
