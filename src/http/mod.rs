@@ -32,16 +32,16 @@ impl DnsQueryParams {
         }
 
         if let Some(name) = self.name {
-            if let Some(qtype) = self.r#type {
-                return Ok(DnsQuestion {
-                    name: name,
+            return if let Some(qtype) = self.r#type {
+                Ok(DnsQuestion {
+                    name,
                     qtype: QueryType::from_str(qtype),
-                });
+                })
             } else {
-                return Ok(DnsQuestion {
-                    name: name,
+                Ok(DnsQuestion {
+                    name,
                     qtype: QueryType::A,
-                });
+                })
             }
         }
 
