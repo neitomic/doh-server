@@ -1,4 +1,4 @@
-use std::net::{Ipv4Addr, UdpSocket};
+use std::net::{Ipv4Addr};
 
 use crate::dns::result::ResultCode;
 
@@ -8,6 +8,7 @@ use self::{
     record::DnsPacket,
 };
 use anyhow::Result;
+use tokio::net::UdpSocket;
 use tracing::debug;
 
 pub mod buffer;
@@ -16,7 +17,7 @@ pub mod query;
 pub mod record;
 pub mod result;
 
-pub fn lookup(
+pub async fn lookup(
     socket: &UdpSocket,
     qname: &str,
     qtype: QueryType,
@@ -33,21 +34,21 @@ pub fn lookup(
     let mut req_buffer = BytePacketBuffer::new();
     packet.write(&mut req_buffer)?;
 
-    socket.send_to(&req_buffer.buf[0..req_buffer.pos], server)?;
+    socket.send_to(&req_buffer.buf[0..req_buffer.pos], server).await?;
 
     let mut res_buffer = BytePacketBuffer::new();
-    socket.recv_from(&mut res_buffer.buf)?;
+    socket.recv_from(&mut res_buffer.buf).await?;
     DnsPacket::from_buffer(&mut res_buffer)
 }
 
-pub fn recursive_lookup(socket: &UdpSocket, qname: &str, qtype: QueryType) -> Result<DnsPacket> {
+pub async fn recursive_lookup(socket: &UdpSocket, qname: &str, qtype: QueryType) -> Result<DnsPacket> {
     let mut ns: Ipv4Addr = "198.41.0.4".parse::<Ipv4Addr>()?;
     loop {
         debug!("attempting lookup of {:?} {} with ns {}", qtype, qname, ns);
 
         let ns_copy = ns;
         let server = (ns_copy, 53);
-        let response: DnsPacket = lookup(socket, qname, qtype, server)?;
+        let response: DnsPacket = lookup(socket, qname, qtype, server).await?;
 
         if !response.answers.is_empty() && response.header.rescode == ResultCode::NOERROR {
             return Ok(response);
@@ -67,7 +68,8 @@ pub fn recursive_lookup(socket: &UdpSocket, qname: &str, qtype: QueryType) -> Re
             None => return Ok(response),
         };
 
-        let recursive_response = recursive_lookup(socket, &new_ns_name, QueryType::A)?;
+        debug!("got unresolved namespace {}, looking it up", new_ns_name);
+        let recursive_response = Box::pin(recursive_lookup(socket, &new_ns_name, QueryType::A)).await?;
         if let Some(new_ns) = recursive_response.get_random_a() {
             ns = new_ns;
         } else {

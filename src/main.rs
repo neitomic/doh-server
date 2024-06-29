@@ -2,7 +2,7 @@ pub mod dns;
 pub mod http;
 pub mod tls;
 
-use std::net::{SocketAddr, UdpSocket};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -21,6 +21,7 @@ use serde_derive::Deserialize;
 use std::sync::Arc;
 use axum::body::Body;
 use axum::http::Request;
+use tokio::net::UdpSocket;
 use tokio::signal;
 use tokio_utils::Pool;
 use tower_http::timeout::TimeoutLayer;
@@ -84,9 +85,12 @@ async fn main() {
     let conf_file = args.config.unwrap_or("conf/default.toml".to_string());
     let settings: Settings = Settings::new(conf_file).unwrap();
 
-    let pool: Pool<Arc<UdpSocket>> = (0..10)
-        .map(|_| Arc::new(UdpSocket::bind("0.0.0.0:0").unwrap()))
-        .into();
+    let mut sockets = Vec::new();
+    for _ in 1..10 {
+        let socket = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+        sockets.push(Arc::new(socket));
+    }
+    let pool: Pool<Arc<UdpSocket>> = Pool::from_vec(sockets);
 
     let app = Router::new()
         .route("/dns-query", get(handle_get))
@@ -149,7 +153,7 @@ async fn handle_get(
 ) -> impl IntoResponse {
     let question = params.to_dns_question().unwrap();
     let socket = pool.acquire().await;
-    let mut result = recursive_lookup(socket.as_ref(), &question.name, question.qtype).unwrap();
+    let mut result = recursive_lookup(socket.as_ref(), &question.name, question.qtype).await.unwrap();
     DnsResponse::from_packet(headers, &mut result).unwrap()
 }
 
@@ -167,7 +171,7 @@ async fn handle_post(
     // todo: handle multiple questions
     if let Some(q) = packet.questions.first() {
         let socket = pool.acquire().await;
-        let mut result = recursive_lookup(socket.as_ref(), &q.name, q.qtype).unwrap();
+        let mut result = recursive_lookup(socket.as_ref(), &q.name, q.qtype).await.unwrap();
         DnsResponse::from_packet(headers, &mut result).unwrap()
     } else {
         DnsResponse::BadRequest()
