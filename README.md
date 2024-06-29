@@ -62,8 +62,15 @@ The JSON only support query using GET.
 curl -H "accept: application/dns-json" "https://localhost/dns-query?name=example.com&type=AAAA"
 ```
 
-## Run
+## Quickstart
 
 ```bash
-cargo run
+# start the server
+make run
+
+# resolve example.com
+curl -H "accept: application/dns-json" "https://localhost/dns-query?name=example.com&type=AAAA"
+
+# benchmark
+make bench
 ```
