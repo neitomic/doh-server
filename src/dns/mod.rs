@@ -1,5 +1,5 @@
 use std::net::{Ipv4Addr};
-
+use std::time::Duration;
 use crate::dns::result::ResultCode;
 
 use self::{
@@ -9,6 +9,7 @@ use self::{
 };
 use anyhow::Result;
 use tokio::net::UdpSocket;
+use tokio::time::timeout;
 use tracing::debug;
 
 pub mod buffer;
@@ -34,10 +35,16 @@ pub async fn lookup(
     let mut req_buffer = BytePacketBuffer::new();
     packet.write(&mut req_buffer)?;
 
-    socket.send_to(&req_buffer.buf[0..req_buffer.pos], server).await?;
+    timeout(
+        Duration::from_millis(1000),
+        socket.send_to(&req_buffer.buf[0..req_buffer.pos], server),
+    ).await??;
 
     let mut res_buffer = BytePacketBuffer::new();
-    socket.recv_from(&mut res_buffer.buf).await?;
+    timeout(
+        Duration::from_millis(1000),
+        socket.recv_from(&mut res_buffer.buf),
+    ).await??;
     DnsPacket::from_buffer(&mut res_buffer)
 }
 
