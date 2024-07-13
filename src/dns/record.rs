@@ -5,7 +5,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{self, json};
 use std::net::{Ipv4Addr, Ipv6Addr};
-use tracing::warn;
+use tracing::{debug, warn};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DnsRecord {
@@ -226,6 +226,17 @@ impl DnsRecord {
 
         Ok(buffer.pos() - start_pos)
     }
+
+    pub fn ttl(&self) -> u32 {
+        match *self {
+            DnsRecord::UNKNOWN { ttl, .. } => ttl,
+            DnsRecord::A { ttl, .. } => ttl,
+            DnsRecord::NS { ttl, .. } => ttl,
+            DnsRecord::CNAME { ttl, .. } => ttl,
+            DnsRecord::MX { ttl, .. } => ttl,
+            DnsRecord::AAAA { ttl, .. } => ttl,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -307,11 +318,13 @@ impl DnsPacket {
         })
     }
 
-    fn get_ns<'a>(&'a self, qname: &'a str) -> impl Iterator<Item = (&'a str, &'a str)> {
+    pub fn get_ns<'a>(&'a self, qname: &'a str) -> impl Iterator<Item=(&'a str, &'a str)> {
         self.authorities
             .iter()
-            .filter_map(|record| match record {
-                DnsRecord::NS { domain, host, .. } => Some((domain.as_str(), host.as_str())),
+            .filter_map(move |record| match record {
+                DnsRecord::NS { domain, host, .. } => {
+                    Some((domain.as_str(), host.as_str()))
+                },
                 _ => None,
             })
             .filter(move |(domain, _)| qname.ends_with(*domain))
@@ -346,6 +359,26 @@ impl DnsPacket {
             "Question": self.questions,
             "Answer": self.answers,
         })
+    }
+
+    pub fn ttl(&self) -> u32 {
+        let mut ttl: u32 = u32::MAX;
+        for answer in &self.answers {
+            if answer.ttl() < ttl {
+                ttl = answer.ttl();
+            }
+        }
+        for authority in &self.authorities {
+            if authority.ttl() < ttl {
+                ttl = authority.ttl();
+            }
+        }
+        for resource in &self.resources {
+            if resource.ttl() < ttl {
+                ttl = resource.ttl();
+            }
+        }
+        ttl
     }
 }
 
