@@ -1,16 +1,26 @@
+use std::str::from_utf8;
 use anyhow::{anyhow, Result};
+use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value};
 
+pub const MAX_SIZE: usize = 1024;
 pub struct BytePacketBuffer {
-    pub buf: [u8; 512],
+    pub buf: [u8; MAX_SIZE], // need to optimize this
     pub pos: usize,
 }
 
 impl BytePacketBuffer {
     pub fn new() -> BytePacketBuffer {
         BytePacketBuffer {
-            buf: [0; 512],
+            buf: [0; MAX_SIZE],
             pos: 0,
         }
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> BytePacketBuffer {
+        let mut buf: [u8; MAX_SIZE] = [0; MAX_SIZE];
+        buf[..bytes.len()].copy_from_slice(bytes);
+
+        BytePacketBuffer { buf, pos: 0 }
     }
 
     pub fn pos(&self) -> usize {
@@ -30,7 +40,7 @@ impl BytePacketBuffer {
     }
 
     pub fn read(&mut self) -> Result<u8> {
-        if self.pos >= 512 {
+        if self.pos >= MAX_SIZE {
             return Err(anyhow!("End of buffer"));
         }
 
@@ -41,14 +51,14 @@ impl BytePacketBuffer {
     }
 
     pub fn get(&mut self, pos: usize) -> Result<u8> {
-        if pos >= 512 {
+        if pos >= MAX_SIZE {
             return Err(anyhow!("End of buffer"));
         }
         Ok(self.buf[pos])
     }
 
     pub fn get_range(&mut self, start: usize, len: usize) -> Result<&[u8]> {
-        if start + len >= 512 {
+        if start + len >= MAX_SIZE {
             return Err(anyhow!("End of buffer"));
         }
         Ok(&self.buf[start..start + len])
@@ -116,7 +126,7 @@ impl BytePacketBuffer {
     }
 
     pub fn write(&mut self, val: u8) -> Result<()> {
-        if self.pos >= 512 {
+        if self.pos >= MAX_SIZE {
             return Err(anyhow!("End of buffer"));
         }
         self.buf[self.pos] = val;
@@ -169,5 +179,33 @@ impl BytePacketBuffer {
         self.set(pos, (val >> 8) as u8)?;
         self.set(pos + 1, (val & 0xFF) as u8)?;
         Ok(())
+    }
+}
+
+
+impl FromRedisValue for BytePacketBuffer {
+    fn from_redis_value(v: &Value) -> RedisResult<Self> {
+        match *v {
+            Value::Data(ref bytes) => {
+                let mut buf: [u8; MAX_SIZE] = [0; MAX_SIZE];
+                buf[..bytes.len()].copy_from_slice(bytes);
+                Ok(BytePacketBuffer { buf, pos: 0 })
+            }
+            _ => Err(
+                RedisError::from((
+                    ErrorKind::TypeError,
+                    "Response was of incompatible type",
+                    format!("Response type not bytes compatible (response was {:?})", v),
+                ))
+            ),
+        }
+    }
+}
+impl ToRedisArgs for BytePacketBuffer {
+    fn write_redis_args<W>(&self, out: &mut W)
+    where
+        W: ?Sized + RedisWrite,
+    {
+        out.write_arg(&self.buf)
     }
 }

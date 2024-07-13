@@ -30,6 +30,9 @@ help:
 # target commands that to be run by make, not files
 .PHONY: help run test bench
 
+run-deps:
+	@docker compose up -d
+
 run:
 	@cargo run 
 

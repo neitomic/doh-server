@@ -65,6 +65,9 @@ curl -H "accept: application/dns-json" "https://localhost/dns-query?name=example
 ## Quickstart
 
 ```bash
+# start dependencies with Docker
+make run-deps
+
 # start the server
 make run
 

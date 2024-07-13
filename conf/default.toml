@@ -9,3 +9,8 @@ country = "VN"
 organization = "test"
 common_name = "localhost"
 sans = []
+
+[redis]
+enabled = true
+url = "redis://127.0.0.1/"
+
