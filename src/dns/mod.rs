@@ -109,6 +109,19 @@ pub async fn lookup(
     DnsPacket::from_buffer(&mut res_buffer)
 }
 
+async fn resolve_ns(socket: &UdpSocket, redis: Arc<Mutex<MultiplexedConnection>>, packet: &DnsPacket, qname: &str) -> Result<Option<Ipv4Addr>> {
+    if let Some(resolved_ns) = packet.get_resolved_ns(qname) {
+        Ok(Some(resolved_ns))
+    } else {
+        if let Some(unresolved_ns) = packet.get_unresolved_ns(qname) {
+            let recursive_response = Box::pin(recursive_lookup(socket, redis.clone(), unresolved_ns, QueryType::A)).await?;
+            Ok(recursive_response.get_random_a())
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 pub async fn recursive_lookup(socket: &UdpSocket, redis: Arc<Mutex<MultiplexedConnection>>, qname: &str, qtype: QueryType) -> Result<DnsPacket> {
     let mut ns: Ipv4Addr = "198.41.0.4".parse::<Ipv4Addr>()?;
 
@@ -117,7 +130,9 @@ pub async fn recursive_lookup(socket: &UdpSocket, redis: Arc<Mutex<MultiplexedCo
     }
 
     if let Some(cached_ns) = lookup_ns_cached(redis.clone(), qname).await? {
-        ns = cached_ns.get_resolved_ns(qname).unwrap(); // since we only cache packet that have resolved ns
+        if let Some(new_ns) = resolve_ns(socket, redis.clone(), &cached_ns, qname).await? {
+            ns = new_ns;
+        }
     }
 
     loop {
@@ -138,19 +153,7 @@ pub async fn recursive_lookup(socket: &UdpSocket, redis: Arc<Mutex<MultiplexedCo
         }
 
         cache_ns(redis.clone(), qname, &mut response).await?;
-        if let Some(new_ns) = response.get_resolved_ns(qname) {
-            ns = new_ns;
-            continue;
-        }
-
-        let new_ns_name = match response.get_unresolved_ns(qname) {
-            Some(x) => x,
-            None => return Ok(response),
-        };
-
-        debug!("got unresolved namespace {}, looking it up", new_ns_name);
-        let recursive_response = Box::pin(recursive_lookup(socket, redis.clone(), &new_ns_name, QueryType::A)).await?;
-        if let Some(new_ns) = recursive_response.get_random_a() {
+        if let Some(new_ns) = resolve_ns(socket, redis.clone(), &response, qname).await? {
             ns = new_ns;
         } else {
             return Ok(response);
