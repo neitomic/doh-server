@@ -11,6 +11,7 @@ pub enum QueryType {
     SOA,   // 6
     MX,    //15
     AAAA,  // 28
+    HTTPS, // 65
 }
 
 impl QueryType {
@@ -23,6 +24,7 @@ impl QueryType {
             QueryType::SOA => 6,
             QueryType::MX => 15,
             QueryType::AAAA => 28,
+            QueryType::HTTPS => 65,
         }
     }
 
@@ -34,6 +36,7 @@ impl QueryType {
             6 => QueryType::SOA,
             15 => QueryType::MX,
             28 => QueryType::AAAA,
+            65 => QueryType::HTTPS,
             _ => QueryType::UNKNOWN(num),
         }
     }
@@ -46,6 +49,7 @@ impl QueryType {
             "SOA" => QueryType::SOA,
             "MX" => QueryType::MX,
             "AAAA" => QueryType::AAAA,
+            "HTTPS" => QueryType::HTTPS,
             _ => QueryType::UNKNOWN(0),
         }
     }

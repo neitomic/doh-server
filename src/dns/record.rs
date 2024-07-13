@@ -148,6 +148,18 @@ impl DnsRecord {
                     ttl,
                 })
             }
+            QueryType::HTTPS => {
+                // should not be here, todo: improve this code
+                // as far as I know, there is no such type in the response
+                buffer.step(data_len as usize)?;
+
+                Ok(DnsRecord::UNKNOWN {
+                    domain,
+                    qtype: qtype_num,
+                    data_len,
+                    ttl,
+                })
+            }
             QueryType::UNKNOWN(_) => {
                 buffer.step(data_len as usize)?;
 
@@ -415,6 +427,7 @@ impl DnsPacket {
             "CD": self.header.checking_disabled,
             "Question": self.questions,
             "Answer": self.answers,
+            "Authority": self.authorities,
         })
     }
 
