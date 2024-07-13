@@ -4,7 +4,7 @@ An implementation of DNS over HTTPS server, which supports both RFC8484 and dns-
 The purpose of this project is mostly for learning and personal use.
 
 ## Credits
-- (dnsguide)[https://github.com/EmilHernvall/dnsguide] for the DNS protocol implementation 
+- [dnsguide](https://github.com/EmilHernvall/dnsguide) for the DNS protocol implementation 
 
 
 ## Specs

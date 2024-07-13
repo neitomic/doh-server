@@ -30,6 +30,17 @@ pub enum DnsRecord {
         host: String,
         ttl: u32,
     }, // 5
+    SOA {
+        domain: String,
+        mname: String,
+        rname: String,
+        serial: u32,
+        refresh: u32,
+        retry: u32,
+        expire: u32,
+        minimum: u32,
+        ttl: u32,
+    }, // 6
     MX {
         domain: String,
         priority: u16,
@@ -99,6 +110,29 @@ impl DnsRecord {
                 Ok(DnsRecord::NS {
                     domain,
                     host: cname,
+                    ttl,
+                })
+            }
+            QueryType::SOA => {
+                let mut mname = String::new();
+                buffer.read_qname(&mut mname)?;
+                let mut rname = String::new();
+                buffer.read_qname(&mut rname)?;
+                let serial = buffer.read_u32()?;
+                let refresh = buffer.read_u32()?;
+                let retry = buffer.read_u32()?;
+                let expire = buffer.read_u32()?;
+                let minimum = buffer.read_u32()?;
+
+                Ok(DnsRecord::SOA {
+                    domain,
+                    mname,
+                    rname,
+                    serial,
+                    refresh,
+                    retry,
+                    expire,
+                    minimum,
                     ttl,
                 })
             }
@@ -199,6 +233,28 @@ impl DnsRecord {
                 let size = buffer.pos() - (pos + 2);
                 buffer.set_u16(pos, size as u16)?;
             }
+            DnsRecord::SOA {
+                ref domain, ref mname, ref rname, serial, refresh, retry, expire, minimum, ttl
+            } => {
+                buffer.write_qname(domain)?;
+                buffer.write_u16(QueryType::SOA.to_num())?;
+                buffer.write_u16(1)?;
+                buffer.write_u32(ttl)?;
+
+                let pos = buffer.pos();
+                buffer.write_u16(0)?;
+
+                buffer.write_qname(mname)?;
+                buffer.write_qname(rname)?;
+                buffer.write_u32(serial)?;
+                buffer.write_u32(refresh)?;
+                buffer.write_u32(retry)?;
+                buffer.write_u32(expire)?;
+                buffer.write_u32(minimum)?;
+
+                let size = buffer.pos() - (pos + 2);
+                buffer.set_u16(pos, size as u16)?;
+            }
             DnsRecord::MX {
                 ref domain,
                 priority,
@@ -233,6 +289,7 @@ impl DnsRecord {
             DnsRecord::A { ttl, .. } => ttl,
             DnsRecord::NS { ttl, .. } => ttl,
             DnsRecord::CNAME { ttl, .. } => ttl,
+            DnsRecord::SOA { ttl, .. } => ttl,
             DnsRecord::MX { ttl, .. } => ttl,
             DnsRecord::AAAA { ttl, .. } => ttl,
         }
@@ -324,7 +381,7 @@ impl DnsPacket {
             .filter_map(move |record| match record {
                 DnsRecord::NS { domain, host, .. } => {
                     Some((domain.as_str(), host.as_str()))
-                },
+                }
                 _ => None,
             })
             .filter(move |(domain, _)| qname.ends_with(*domain))

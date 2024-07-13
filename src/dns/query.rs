@@ -8,6 +8,7 @@ pub enum QueryType {
     A,     // 1
     NS,    // 2
     CNAME, // 5
+    SOA,   // 6
     MX,    //15
     AAAA,  // 28
 }
@@ -19,6 +20,7 @@ impl QueryType {
             QueryType::A => 1,
             QueryType::NS => 2,
             QueryType::CNAME => 5,
+            QueryType::SOA => 6,
             QueryType::MX => 15,
             QueryType::AAAA => 28,
         }
@@ -29,6 +31,7 @@ impl QueryType {
             1 => QueryType::A,
             2 => QueryType::NS,
             5 => QueryType::CNAME,
+            6 => QueryType::SOA,
             15 => QueryType::MX,
             28 => QueryType::AAAA,
             _ => QueryType::UNKNOWN(num),
@@ -40,6 +43,7 @@ impl QueryType {
             "A" => QueryType::A,
             "NS" => QueryType::NS,
             "CNAME" => QueryType::CNAME,
+            "SOA" => QueryType::SOA,
             "MX" => QueryType::MX,
             "AAAA" => QueryType::AAAA,
             _ => QueryType::UNKNOWN(0),
