@@ -33,6 +33,7 @@ help:
 run-deps:
 	@docker compose up -d
 
+run: export RUST_BACKTRACE = full
 run:
 	@cargo run 
 
