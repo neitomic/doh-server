@@ -110,7 +110,7 @@ async fn main() {
         sockets.push(Arc::new(socket));
     }
     let socket_pool: Pool<Arc<UdpSocket>> = Pool::from_vec(sockets);
-    let client = redis::Client::open(settings.redis.url).unwrap();
+    let client = Client::open(settings.redis.url).unwrap();
     let redis_conn: MultiplexedConnection = client.get_multiplexed_async_connection().await.unwrap();
     let app_state = AppState {
         socket_pool,
@@ -130,6 +130,7 @@ async fn main() {
                     uri = display(request.uri()),
                     version = debug(request.version()),
                     request_id = display(request_id),
+                    headers = debug(request.headers()),
                 )
             }),
             TimeoutLayer::new(Duration::from_secs(10)),
