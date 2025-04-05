@@ -1,13 +1,14 @@
-use std::net::{Ipv4Addr};
+use crate::dns::result::ResultCode;
+use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::time::Duration;
-use crate::dns::result::ResultCode;
 
 use self::{
     buffer::BytePacketBuffer,
     query::{DnsQuestion, QueryType},
     record::DnsPacket,
 };
+use crate::cache::OptionalValue;
 use anyhow::Result;
 use redis::aio::MultiplexedConnection;
 use redis::{AsyncCommands, SetExpiry, SetOptions};
@@ -15,7 +16,6 @@ use tokio::net::UdpSocket;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 use tracing::debug;
-use crate::cache::OptionalValue;
 
 pub mod buffer;
 pub mod header;
@@ -23,9 +23,14 @@ pub mod query;
 pub mod record;
 pub mod result;
 
-async fn lookup_cache(redis: Arc<Mutex<MultiplexedConnection>>, qname: &str, qtype: QueryType) -> Result<Option<DnsPacket>> {
+async fn lookup_cache(
+    redis: Arc<Mutex<MultiplexedConnection>>,
+    qname: &str,
+    qtype: QueryType,
+) -> Result<Option<DnsPacket>> {
     let mut conn = redis.lock().await;
-    let mut cached: OptionalValue<BytePacketBuffer> = conn.get(format!("{}_{:?}", qname, qtype)).await?;
+    let mut cached: OptionalValue<BytePacketBuffer> =
+        conn.get(format!("{}_{:?}", qname, qtype)).await?;
     if let OptionalValue::Some(ref mut buffer) = cached {
         debug!("found response for {}:{:?} from cache", qname, qtype);
         let packet = DnsPacket::from_buffer(buffer)?;
@@ -35,14 +40,21 @@ async fn lookup_cache(redis: Arc<Mutex<MultiplexedConnection>>, qname: &str, qty
     }
 }
 
-async fn lookup_ns_cached(redis: Arc<Mutex<MultiplexedConnection>>, qname: &str) -> Result<Option<DnsPacket>> {
+async fn lookup_ns_cached(
+    redis: Arc<Mutex<MultiplexedConnection>>,
+    qname: &str,
+) -> Result<Option<DnsPacket>> {
     let keys = postfixes(qname);
     let mut conn = redis.lock().await;
 
     for key in keys {
-        let mut cached: OptionalValue<BytePacketBuffer> = conn.get(format!("{key}_nameserver")).await?;
+        let mut cached: OptionalValue<BytePacketBuffer> =
+            conn.get(format!("{key}_nameserver")).await?;
         if let OptionalValue::Some(ref mut buffer) = cached {
-            debug!("found cached NS for {} from cache with nameserver {}", qname, key);
+            debug!(
+                "found cached NS for {} from cache with nameserver {}",
+                qname, key
+            );
             let packet = DnsPacket::from_buffer(buffer)?;
             return Ok(Some(packet));
         }
@@ -50,32 +62,46 @@ async fn lookup_ns_cached(redis: Arc<Mutex<MultiplexedConnection>>, qname: &str)
     Ok(None)
 }
 
-async fn cache_ns(redis: Arc<Mutex<MultiplexedConnection>>, qname: &str, packet: &mut DnsPacket) -> Result<()> {
+async fn cache_ns(
+    redis: Arc<Mutex<MultiplexedConnection>>,
+    qname: &str,
+    packet: &mut DnsPacket,
+) -> Result<()> {
     let mut conn = redis.lock().await;
     let mut buffer = BytePacketBuffer::new();
     packet.write(&mut buffer)?;
     let ns = packet.get_ns(qname).next();
     if let Some((domain, _)) = ns {
-        let ttl = packet.ttl() as usize;
-        debug!("storing cache NS for {} with nameserver {} and ttl {}", qname, domain, ttl);
-        let mut options = SetOptions::default();
-        options.with_expiration(SetExpiry::EX(ttl));
-        let _ = conn.set_options(format!("{domain}_nameserver"), buffer, options).await?;
+        let ttl = packet.ttl() as u64;
+        debug!(
+            "storing cache NS for {} with nameserver {} and ttl {}",
+            qname, domain, ttl
+        );
+        let options = SetOptions::default().with_expiration(SetExpiry::EX(ttl));
+        let _: () = conn
+            .set_options(format!("{domain}_nameserver"), buffer, options)
+            .await?;
     } else {
         debug!("store cache NS for {} but NS not found", qname);
     }
     Ok(())
 }
 
-async fn cache(redis: Arc<Mutex<MultiplexedConnection>>, qname: &str, qtype: QueryType, packet: &mut DnsPacket) -> Result<()> {
+async fn cache(
+    redis: Arc<Mutex<MultiplexedConnection>>,
+    qname: &str,
+    qtype: QueryType,
+    packet: &mut DnsPacket,
+) -> Result<()> {
     let mut conn = redis.lock().await;
     let mut buffer = BytePacketBuffer::new();
     packet.write(&mut buffer)?;
-    let ttl = packet.ttl() as usize;
+    let ttl = packet.ttl() as u64;
     debug!("storing cache for {}:{:?} with ttl {}", qname, qtype, ttl);
-    let mut options = SetOptions::default();
-    options.with_expiration(SetExpiry::EX(ttl));
-    let _ = conn.set_options(format!("{}_{:?}", qname, qtype), buffer, options).await?;
+    let options = SetOptions::default().with_expiration(SetExpiry::EX(ttl));
+    let _: () = conn
+        .set_options(format!("{}_{:?}", qname, qtype), buffer, options)
+        .await?;
     Ok(())
 }
 
@@ -99,22 +125,35 @@ pub async fn lookup(
     timeout(
         Duration::from_millis(1000),
         socket.send_to(&req_buffer.buf[0..req_buffer.pos], server),
-    ).await??;
+    )
+    .await??;
 
     let mut res_buffer = BytePacketBuffer::new();
     timeout(
         Duration::from_millis(1000),
         socket.recv_from(&mut res_buffer.buf),
-    ).await??;
+    )
+    .await??;
     DnsPacket::from_buffer(&mut res_buffer)
 }
 
-async fn resolve_ns(socket: &UdpSocket, redis: Arc<Mutex<MultiplexedConnection>>, packet: &DnsPacket, qname: &str) -> Result<Option<Ipv4Addr>> {
+async fn resolve_ns(
+    socket: &UdpSocket,
+    redis: Arc<Mutex<MultiplexedConnection>>,
+    packet: &DnsPacket,
+    qname: &str,
+) -> Result<Option<Ipv4Addr>> {
     if let Some(resolved_ns) = packet.get_resolved_ns(qname) {
         Ok(Some(resolved_ns))
     } else {
         if let Some(unresolved_ns) = packet.get_unresolved_ns(qname) {
-            let recursive_response = Box::pin(recursive_lookup(socket, redis.clone(), unresolved_ns, QueryType::A)).await?;
+            let recursive_response = Box::pin(recursive_lookup(
+                socket,
+                redis.clone(),
+                unresolved_ns,
+                QueryType::A,
+            ))
+            .await?;
             Ok(recursive_response.get_random_a())
         } else {
             Ok(None)
@@ -122,7 +161,12 @@ async fn resolve_ns(socket: &UdpSocket, redis: Arc<Mutex<MultiplexedConnection>>
     }
 }
 
-pub async fn recursive_lookup(socket: &UdpSocket, redis: Arc<Mutex<MultiplexedConnection>>, qname: &str, qtype: QueryType) -> Result<DnsPacket> {
+pub async fn recursive_lookup(
+    socket: &UdpSocket,
+    redis: Arc<Mutex<MultiplexedConnection>>,
+    qname: &str,
+    qtype: QueryType,
+) -> Result<DnsPacket> {
     let mut ns: Ipv4Addr = "198.41.0.4".parse::<Ipv4Addr>()?;
 
     if let Some(cached) = lookup_cache(redis.clone(), qname, qtype).await? {
@@ -160,7 +204,6 @@ pub async fn recursive_lookup(socket: &UdpSocket, redis: Arc<Mutex<MultiplexedCo
         }
     }
 }
-
 
 pub fn postfixes(qname: &str) -> Vec<String> {
     let mut result = Vec::new();

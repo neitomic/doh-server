@@ -2,7 +2,7 @@
 host = "0.0.0.0"
 port = 443
 
-[tls]
+[server.tls]
 enabled = true
 cert_dir = "cert"
 country = "VN"

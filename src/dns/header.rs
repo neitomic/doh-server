@@ -78,7 +78,7 @@ impl DnsHeader {
                 | ((self.truncated_message as u8) << 1)
                 | ((self.authoritative_answer as u8) << 2)
                 | (self.opcode << 3)
-                | ((self.response as u8) << 7)
+                | ((self.response as u8) << 7),
         )?;
 
         buffer.write_u8(
@@ -86,7 +86,7 @@ impl DnsHeader {
                 | ((self.checking_disabled as u8) << 4)
                 | ((self.authed_data as u8) << 5)
                 | ((self.z as u8) << 6)
-                | ((self.recursion_available as u8) << 7)
+                | ((self.recursion_available as u8) << 7),
         )?;
 
         buffer.write_u16(self.questions)?;

@@ -5,7 +5,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{self, json};
 use std::net::{Ipv4Addr, Ipv6Addr};
-use tracing::{debug, warn};
+use tracing::warn;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DnsRecord {
@@ -246,7 +246,15 @@ impl DnsRecord {
                 buffer.set_u16(pos, size as u16)?;
             }
             DnsRecord::SOA {
-                ref domain, ref mname, ref rname, serial, refresh, retry, expire, minimum, ttl
+                ref domain,
+                ref mname,
+                ref rname,
+                serial,
+                refresh,
+                retry,
+                expire,
+                minimum,
+                ttl,
             } => {
                 buffer.write_qname(domain)?;
                 buffer.write_u16(QueryType::SOA.to_num())?;
@@ -387,13 +395,11 @@ impl DnsPacket {
         })
     }
 
-    pub fn get_ns<'a>(&'a self, qname: &'a str) -> impl Iterator<Item=(&'a str, &'a str)> {
+    pub fn get_ns<'a>(&'a self, qname: &'a str) -> impl Iterator<Item = (&'a str, &'a str)> {
         self.authorities
             .iter()
             .filter_map(move |record| match record {
-                DnsRecord::NS { domain, host, .. } => {
-                    Some((domain.as_str(), host.as_str()))
-                }
+                DnsRecord::NS { domain, host, .. } => Some((domain.as_str(), host.as_str())),
                 _ => None,
             })
             .filter(move |(domain, _)| qname.ends_with(*domain))

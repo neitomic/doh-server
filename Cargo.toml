@@ -7,23 +7,28 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
-axum = "0.7.5"
-axum-extra = "0.9.3"
-axum-server = { version = "0.6", features = ["tls-rustls"] }
+axum = "0.8.3"
+axum-extra = "0.10.1"
+axum-server = { version = "0.7.2", features = ["tls-rustls"] }
 base64 = "0.22.1"
 rcgen = { version = "0.13.1", features = ["pem", "x509-parser"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.117"
 tempfile = "3.10.1"
 tokio = { version = "1.37.0", features = ["full"] }
-tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.5", features = ["timeout", "trace"] }
+tower = { version = "0.5.2", features = [
+    "util",
+    "timeout",
+] }
+tower-http = { version = "0.6.2", features = ["timeout", "trace", "sensitive-headers", "catch-panic"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-config = "0.14.0"
+config = "0.15.11"
 clap = { version = "4.5.4", features = ["derive"] }
 serde_derive = "1.0.203"
 tokio-utils = "0.1.2"
 uuid = { version = "1.9.1", features = ["v4", "fast-rng"] }
-redis = { version = "0.25.3", features = ["tokio-comp"] }
+redis = { version = "0.29.2", features = ["tokio-comp"] }
+dotenv = { version = "0.15.0", features = ["clap"] }
+env_logger = "0.11.8"
 
