@@ -11,16 +11,9 @@ use redis::aio::MultiplexedConnection;
 use redis::Client;
 use std::sync::Arc;
 use tokio::net::UdpSocket;
-use tokio::sync::Mutex;
 use tokio_utils::Pool;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-
-#[derive(Clone)]
-struct AppState {
-    socket_pool: Pool<Arc<UdpSocket>>,
-    redis_conn: Arc<Mutex<MultiplexedConnection>>,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
