@@ -65,8 +65,8 @@ pub struct DnsQueryParams {
     dns: Option<String>,
     name: Option<String>,
     r#type: Option<String>,
-    r#do: Option<String>,
-    cd: Option<String>,
+    // r#do: Option<String>,
+    // cd: Option<String>,
 }
 
 impl DnsQueryParams {

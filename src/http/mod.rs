@@ -1,26 +1,13 @@
 mod dns;
 
-use crate::dns::{
-    buffer::BytePacketBuffer,
-    query::{DnsQuestion, QueryType},
-    record::DnsPacket,
-};
-use crate::settings::{Server, Settings, Tls};
+use crate::settings::{Server, Tls};
 use axum::body::Body;
 use axum::http::header::AUTHORIZATION;
 use axum::http::Request;
-use axum::routing::{get, post};
-use axum::{
-    http::{header, HeaderMap, StatusCode},
-    response::IntoResponse,
-    Router,
-};
+use axum::Router;
 use axum_server::tls_rustls::RustlsConfig;
-use base64::engine::{general_purpose, Engine};
-use config::Config;
 use redis::aio::MultiplexedConnection;
-use serde::Deserialize;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;

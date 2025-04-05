@@ -5,15 +5,12 @@ pub mod settings;
 pub mod tls;
 
 use crate::settings::{SettingArgs, Settings};
-use axum::response::IntoResponse;
 use clap::Parser;
 use redis::aio::MultiplexedConnection;
 use redis::Client;
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 use tokio_utils::Pool;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

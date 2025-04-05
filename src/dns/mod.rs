@@ -77,9 +77,8 @@ async fn cache_ns(
             "storing cache NS for {} with nameserver {} and ttl {}",
             qname, domain, ttl
         );
-        let mut options = SetOptions::default();
-        options.with_expiration(SetExpiry::EX(ttl));
-        let _ = conn
+        let options = SetOptions::default().with_expiration(SetExpiry::EX(ttl));
+        let _: () = conn
             .set_options(format!("{domain}_nameserver"), buffer, options)
             .await?;
     } else {
@@ -99,9 +98,8 @@ async fn cache(
     packet.write(&mut buffer)?;
     let ttl = packet.ttl() as u64;
     debug!("storing cache for {}:{:?} with ttl {}", qname, qtype, ttl);
-    let mut options = SetOptions::default();
-    options.with_expiration(SetExpiry::EX(ttl));
-    let _ = conn
+    let options = SetOptions::default().with_expiration(SetExpiry::EX(ttl));
+    let _: () = conn
         .set_options(format!("{}_{:?}", qname, qtype), buffer, options)
         .await?;
     Ok(())

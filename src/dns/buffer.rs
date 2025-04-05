@@ -1,4 +1,3 @@
-use std::str::from_utf8;
 use anyhow::{anyhow, Result};
 use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value};
 
@@ -182,7 +181,6 @@ impl BytePacketBuffer {
     }
 }
 
-
 impl FromRedisValue for BytePacketBuffer {
     fn from_redis_value(v: &Value) -> RedisResult<Self> {
         match *v {
@@ -191,13 +189,11 @@ impl FromRedisValue for BytePacketBuffer {
                 buf[..bytes.len()].copy_from_slice(bytes);
                 Ok(BytePacketBuffer { buf, pos: 0 })
             }
-            _ => Err(
-                RedisError::from((
-                    ErrorKind::TypeError,
-                    "Response was of incompatible type",
-                    format!("Response type not bytes compatible (response was {:?})", v),
-                ))
-            ),
+            _ => Err(RedisError::from((
+                ErrorKind::TypeError,
+                "Response was of incompatible type",
+                format!("Response type not bytes compatible (response was {:?})", v),
+            ))),
         }
     }
 }
