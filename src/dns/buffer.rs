@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value};
 
-pub const MAX_SIZE: usize = 1024;
+pub const MAX_SIZE: usize = 4096;
 pub struct BytePacketBuffer {
     pub buf: [u8; MAX_SIZE], // need to optimize this
     pub pos: usize,
