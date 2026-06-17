@@ -107,7 +107,7 @@ impl DnsRecord {
                 let mut cname = String::new();
                 buffer.read_qname(&mut cname)?;
 
-                Ok(DnsRecord::NS {
+                Ok(DnsRecord::CNAME {
                     domain,
                     host: cname,
                     ttl,
@@ -415,7 +415,7 @@ impl DnsPacket {
                         _ => None,
                     })
             })
-            .map(|addr| *addr)
+            .copied()
             .next()
     }
 

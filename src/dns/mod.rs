@@ -205,6 +205,10 @@ pub async fn recursive_lookup(
     }
 }
 
+pub fn preserve_response_id(response: &mut DnsPacket, request_id: u16) {
+    response.header.id = request_id;
+}
+
 pub fn postfixes(qname: &str) -> Vec<String> {
     let mut result = Vec::new();
     let split = qname.rsplit(".");
@@ -234,5 +238,15 @@ mod tests {
         let vec = postfixes("mail.google.com");
 
         assert_eq!(vec!("mail.google.com", "google.com", "com"), vec)
+    }
+
+    #[test]
+    fn test_preserve_response_id() {
+        let mut packet = DnsPacket::new();
+        packet.header.id = 6666;
+
+        preserve_response_id(&mut packet, 0);
+
+        assert_eq!(0, packet.header.id);
     }
 }

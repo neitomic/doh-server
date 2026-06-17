@@ -1,4 +1,4 @@
-FROM rust:1.79 as build
+FROM rust:1.89 as build
 WORKDIR /doh-server
 
 COPY Cargo.toml Cargo.lock ./

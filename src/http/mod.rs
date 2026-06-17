@@ -1,4 +1,4 @@
-mod dns;
+pub mod dns;
 
 use crate::settings::{Server, Tls};
 use axum::body::Body;
@@ -26,9 +26,9 @@ use tracing_subscriber::util::SubscriberInitExt;
 use uuid::Uuid;
 
 #[derive(Clone)]
-pub(crate) struct ApiContext {
-    udp_socket_pool: Pool<Arc<UdpSocket>>,
-    redis_conn: Arc<Mutex<MultiplexedConnection>>,
+pub struct ApiContext {
+    pub udp_socket_pool: Pool<Arc<UdpSocket>>,
+    pub redis_conn: Arc<Mutex<MultiplexedConnection>>,
 }
 
 pub async fn serve(

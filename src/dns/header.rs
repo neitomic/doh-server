@@ -24,6 +24,12 @@ pub struct DnsHeader {
     pub resource_entries: u16,
 }
 
+impl Default for DnsHeader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DnsHeader {
     pub fn new() -> DnsHeader {
         DnsHeader {
@@ -53,7 +59,7 @@ impl DnsHeader {
         self.recursion_desired = (a & (1 << 0)) > 0;
         self.truncated_message = (a & (1 << 1)) > 0;
         self.authoritative_answer = (a & (1 << 2)) > 0;
-        self.opcode = (1 >> 3) & 0x0F;
+        self.opcode = (a >> 3) & 0x0F;
         self.response = (a & (1 << 7)) > 0;
 
         self.rescode = ResultCode::from_num(b & 0x0F);
